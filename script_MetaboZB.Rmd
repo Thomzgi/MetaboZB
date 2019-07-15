@@ -1,0 +1,555 @@
+---
+title: "Metabolic_Zebra"
+author: "Thomas Z"
+date: "14 juillet 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/Documents/Doctorat/Experimental/Zebra finch/BMR")
+
+library(Hmisc)
+Packages <- c("lme4",
+              "nlme",
+              "ggplot2",
+              "plyr",
+              "readr",
+              "MuMIn",
+              "rcompanion",
+              "bbmle",
+              "magrittr",
+              "dplyr",
+              "zoo",
+              "AICcmodavg",
+              "MuMIn",
+              "plyr",
+              "psych",
+              "lmerTest",
+              "robustlmm")
+library(gridExtra)
+library(grid)
+library(png)
+library(grDevices)
+library(car)
+
+
+lapply(Packages, library, character.only = TRUE)
+```
+Équipe sur le papier: Thomas Z., Lyette R., Audrey L.P., François V., Pierrot L.
+
+Analyses des données de BMR sur les diamants exposés durant leur croissance à deux traitements:
+- 1) Imidacloprid / ctrl
+- 2) restriction alimentaire / Ad libitum
+
+Les mesures ont été réalisées sur des oiseaux de deux ans.
+
+Nous avons donc des données de QMR et BMR.
+L'idée est simple, puisqu'il s'agit de comparer le BMR suivant les traitements mais également les compositions corporelles.
+Je présente ici une première analyse, essentiellement composée de graphiques exploratoires et de quelques tests pour valider les tendances. 
+
+IMPORTANT
+Comme pour le papier 1, je déroule, dans un premier temps l'analyse avec l'ensemble du dataset puis décompose le jeu entre la période A et B (différences de concentrations en IMI)
+
+
+## Aspect Général
+### 1) Visualisation des données
+
+```{r}
+# Import des données
+BMR_OK <- read.csv("~/Documents/Doctorat/Experimental/Zebra finch/BMR/BMR_OK_COMPLET.csv")
+Masse_heure <- read.csv("~/Documents/Doctorat/Experimental/Zebra finch/BMR/Masse_heure.csv", dec= ",")
+
+# merge des tables
+BMR <- merge(BMR_OK, Masse_heure, by="COMBI_FINAL", all=FALSE)
+
+
+# Création d'un vecteur simple pour test d'analyse (comme Papier #1)
+BMR$TRT <- paste(BMR$PEST, BMR$TREATMENT, sep="_")
+
+# Min - Max
+range(BMR$Mean_VO2watt_1)
+
+# histogramme des données d'intérets
+hist(BMR$Mean_VO2watt_1)
+shapiro.test(BMR$Mean_VO2watt_1)
+# pas de normalité
+
+# transformation log
+hist(log(BMR$Mean_VO2watt_1))
+# Une transformation log me va 
+shapiro.test(log(BMR$Mean_VO2watt_1))
+# toujours de normalité si on suit shapiro.
+
+# L'individu avec la valeur max de VO2watt
+# Je ne suis pas pour le retirer.
+#BMR <- subset(BMR, COMBI_FINAL != "Y65")
+
+
+```
+
+### 2) Répartion
+
+- Adlib ctrl n= 17 (9 M + 8 F)
+- Adlib imi n= 17 (7M 10F)
+- Restriction imi n= 23 (12M 11F)
+- Restriction ctrl n= 22 (12 M + 10 F)
+
+
+### 3) Création du mass corrected BMR et du rapport de FAT sur LEAN
+
+Le BMR (en Watt) est divisé par la masse. À des fins exploratoires, je créee aussi un ration Fat/Lean
+
+```{r}
+BMR$BMR_MassCor <- (BMR$Mean_VO2watt_1/BMR$masse.moyenne.entree.bmr)
+
+BMR$BMR_LeanCor <- (BMR$Mean_VO2watt_1/BMR$prebmr.Moyenne_Lean)
+
+BMR$Fat_LeanRatio <- BMR$prebmr.Moyenne_Fat/BMR$prebmr.Moyenne_Lean
+
+# calcul SMI
+Cor_SMI <- select(BMR, masse.moyenne.entree.bmr , TARSUS90, TB90)
+# matrice de corrélation: sélection de la variable la + corrélée à la masse
+cor(Cor_SMI, use = "complete.obs")
+# Sélection de TB pour le smi
+
+plot(BMR$masse.moyenne.entree.bmr,BMR$MASS90)
+cor(BMR$masse.moyenne.entree.bmr,BMR$MASS90)
+
+p2 =cor.test(BMR$masse.moyenne.entree.bmr, BMR$TARSUS90, method = "pearson")
+lm2<-lm(masse.moyenne.entree.bmr~TARSUS90,data=BMR)
+c2=as.data.frame(lm2$coefficients)
+bSMA2=c2[2,1]/p2$estimate
+BMR$SMI=BMR$masse.moyenne.entree.bmr*(mean(BMR$TARSUS90)/BMR$TARSUS90)^bSMA2
+
+
+# Comme les analyses seront probablement séparées par Periode, on scinde le dataset
+BMR_A <- subset(BMR, GROUPE=="A")
+BMR_B <- subset(BMR,GROUPE=="B")
+
+
+# On début par quelques graphs de tailles structurelles des oiseaux en utilisant les TB et Tarsus au jour 90
+p4A<- ggplot(BMR_A, aes(x=PEST, y = TB90 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = TB90), col = "red", alpha = 0.2)+
+  labs(title="Head_bill Period A",
+        x ="pest", y = "Head bill")
+
+p4B<- ggplot(BMR_B, aes(x=PEST, y = TB90 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = TB90), col = "red", alpha = 0.2)+
+  labs(title="Head_bill Period B",
+        x ="pest", y = "Head bill")
+
+grid.arrange(p4A, p4B,ncol=2)
+
+# Tarsus
+
+p4A<- ggplot(BMR_A, aes(x=PEST, y = TARSUS90 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = TARSUS90), col = "red", alpha = 0.2)+
+  labs(title="Head_bill Period A",
+        x ="pest", y = "Head bill")
+
+p4B<- ggplot(BMR_B, aes(x=PEST, y = TARSUS90 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = TARSUS90), col = "red", alpha = 0.2)+
+  labs(title="Head_bill Period B",
+        x ="pest", y = "Head bill")
+
+grid.arrange(p4A, p4B,ncol=2)
+
+###
+
+p4<- ggplot(BMR, aes(x=SEX, y = Mean_VO2watt_1 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = SEX, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+  labs(title="BMR Period A",
+        x ="Sex", y = "BMR")
+
+p4
+
+p4A<- ggplot(BMR_A, aes(x=SEX, y = Mean_VO2watt_1 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = SEX, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+  labs(title="BMR Period A",
+        x ="Sex", y = "BMR")
+
+p4B<- ggplot(BMR_B, aes(x=SEX, y = Mean_VO2watt_1 )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = SEX, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+  labs(title="Head_bill Period B",
+        x ="Sex", y = "BMR")
+
+grid.arrange(p4A, p4B,ncol=2)
+
+# ANOVA de l'effet sex
+# ANOVA
+res.aov <- aov(Mean_VO2watt_1 ~ SEX, data = BMR)
+TukeyHSD(res.aov)
+# Summary of the analysis
+plot(res.aov, 1)
+leveneTest(Mean_VO2watt_1 ~ TRT, data = BMR_A)
+plot(res.aov, 2)
+```
+### Calcul d'un SMI 2 ans
+
+Pour se faire, j'utilise la valeur morpho mesuré au jour 90, la plus corrélée. Ces variables morpho sont jugés constante à cette age. 
+
+```{r}
+# SMI
+
+
+p4A<- ggplot(BMR_A, aes(x=PEST, y = SMI )) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = SMI), col = "red", alpha = 0.2)+
+  labs(title="SMI Period A",
+        x ="pest", y = "SMI (g)")
+
+p4B<- ggplot(BMR_B, aes(x=PEST, y = SMI)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = SMI), col = "red", alpha = 0.2)+
+  labs(title="SMI Period B",
+        x ="pest", y = "SMI (g)")
+
+grid.arrange(p4A, p4B,ncol=2)
+
+# ANOVA SMI ~ TRT
+
+# ANOVA
+res.aov <- aov(SMI ~ TRT, data = BMR_A)
+TukeyHSD(res.aov)
+# Summary of the analysis
+plot(res.aov, 1)
+leveneTest(Mean_VO2watt_1 ~ TRT, data = BMR_A)
+plot(res.aov, 2)
+
+
+
+
+```
+
+
+
+## Graphiques exploratoires
+
+```{r}
+par(mfrow=c(2,2))
+p1 <- ggplot(BMR, aes(x=TRT, y = Mean_VO2watt_1)) + geom_boxplot()+
+theme_bw()
+p2 <- ggplot(BMR, aes(x=TREATMENT, y = Mean_VO2watt_1)) + geom_boxplot()+
+theme_bw()
+p3<- ggplot(BMR, aes(x=PEST, y = Mean_VO2watt_1)) + geom_boxplot()+
+theme_bw()
+p4<- ggplot(BMR, aes(x=TRT, y = BMR_MassCor)) + geom_boxplot()+
+theme_bw()
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+
+```
+
+```{r}
+p1A <- ggplot(BMR_A, aes(x=TRT, y = Mean_VO2watt_1)) + geom_boxplot() +
+  theme_bw()+
+  geom_point(aes(x = TRT, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+labs(title="VO2 watt Period A",
+        x ="TRT", y = "VO2 watt")
+p1B <- ggplot(BMR_B, aes(x=TRT, y = Mean_VO2watt_1)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = TRT, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+labs(title="VO2 watt Period B",
+        x ="TRT", y = "VO2 watt")
+grid.arrange(p1A, p1B, ncol = 2)
+```
+
+```{r}
+p2A <- ggplot(BMR_A, aes(x=TREATMENT, y = Mean_VO2watt_1)) + geom_boxplot()+
+  theme_bw()+
+labs(title="VO2 watt Period A",
+        x ="Food TRT", y = "VO2 watt") 
+p2B <- ggplot(BMR_B, aes(x=TREATMENT, y = Mean_VO2watt_1)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="VO2 watt Period B",
+        x ="Food TRT", y = "VO2 watt") 
+grid.arrange(p2A, p2B, ncol = 2)
+
+```
+
+```{r}
+p3A<- ggplot(BMR_A, aes(x=PEST, y = Mean_VO2watt_1)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+  labs(title="VO2 watt Period A",
+        x ="Pest TRT", y = "VO2 watt") 
+p3B<- ggplot(BMR_B, aes(x=PEST, y = Mean_VO2watt_1)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = Mean_VO2watt_1), col = "red", alpha = 0.2)+
+  labs(title="VO2 watt Period B",
+        x ="Pest TRT", y = "VO2 watt") 
+grid.arrange(p3A, p3B, ncol = 2)
+```
+
+```{r}
+p4A<- ggplot(BMR_A, aes(x=TRT, y = BMR_MassCor)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = TRT, y = BMR_MassCor), col = "red", alpha = 0.2)+
+  labs(title="Mass corrected BMR Period A",
+        x ="Food TRT", y = "VO2 watt")
+
+  p4B<- ggplot(BMR_B, aes(x=TRT, y = BMR_MassCor)) + geom_boxplot()+
+  theme_bw()+
+   geom_point(aes(x = TRT, y = BMR_MassCor), col = "red", alpha = 0.2)+
+    labs(title="Mass corrected BMR Period B",
+        x ="Food TRT", y = "VO2 watt")
+grid.arrange(p4A, p4B, ncol = 2)
+
+```
+
+```{r}
+p3A<- ggplot(BMR_A, aes(x=PEST, y = BMR_MassCor)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = BMR_MassCor), col = "red", alpha = 0.2)+
+  labs(title="BMR maccCor Period A",
+        x ="Pest TRT", y = "VO2 watt/Mass") 
+p3B<- ggplot(BMR_B, aes(x=PEST, y = BMR_MassCor)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = BMR_MassCor), col = "red", alpha = 0.2)+
+  labs(title="BMR maccCor Period B",
+        x ="Pest TRT", y = "VO2 watt/Mass") 
+grid.arrange(p3A, p3B, ncol = 2)
+```
+
+```{r}
+p5A<- ggplot(BMR_A, aes(x=TRT, y = BMR_LeanCor)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="Lean corrected BMR Period A",
+        x ="Food TRT", y = "VO2 watt") 
+p5B<- ggplot(BMR_B, aes(x=TRT, y = BMR_LeanCor)) + geom_boxplot()+
+  theme_bw()+
+    labs(title="Lean corrected BMR Period B",
+        x ="Food TRT", y = "VO2 watt")
+grid.arrange(p5A, p5B, ncol = 2)
+
+```
+## Graphiques des données de QMR
+### Masse avec tout le jeu de données
+
+```{r}
+p1A <- ggplot(BMR_A, aes(x=TRT, y = masse.moyenne.entree.bmr)) + geom_boxplot() +
+  theme_bw()+
+labs(title="Lean Period A",
+        x ="TRT", y = "Fat")
+p1B <- ggplot(BMR_B, aes(x=TRT, y = masse.moyenne.entree.bmr)) + geom_boxplot()+
+  theme_bw()+
+labs(title="Lean Period B",
+        x ="TRT", y = "Fat")
+grid.arrange(p1A, p1B, ncol = 2)
+```
+
+### Lean avec tout le jeu de données
+
+```{r}
+par(mfrow=c(2,2))
+p1 <- ggplot(BMR, aes(x=TRT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()
+p2 <- ggplot(BMR, aes(x=TREATMENT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()
+p3<- ggplot(BMR, aes(x=PEST, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()
+p4<- ggplot(BMR, aes(x=TRT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+theme_bw()
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+### Fat avec tout le jeu de données
+```{r}
+par(mfrow=c(2,2))
+p1 <- ggplot(BMR, aes(x=TRT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()
+p2 <- ggplot(BMR, aes(x=TREATMENT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()
+p3<- ggplot(BMR, aes(x=PEST, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()
+p4<- ggplot(BMR, aes(x=TRT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+### Lean entre la période A et B
+
+```{r}
+p1A <- ggplot(BMR_A, aes(x=TRT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = TRT, y = prebmr.Moyenne_Lean), col = "red", alpha = 0.2)+
+labs(title="Lean Period A",
+        x ="TRT", y = "Lean")
+
+p1B <- ggplot(BMR_B, aes(x=TRT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = TRT, y = prebmr.Moyenne_Lean), col = "red", alpha = 0.2)+
+labs(title="Lean Period B",
+        x ="TRT", y = "Lean")
+grid.arrange(p1A, p1B, ncol = 2)
+
+
+```
+### Fat entre la période A et B entre tous les traitements
+
+```{r}
+p1A <- ggplot(BMR_A, aes(x=TRT, y = prebmr.Moyenne_Fat)) + geom_boxplot() +
+  theme_bw()+
+labs(title="Lean Period A",
+        x ="TRT", y = "Fat")
+p1B <- ggplot(BMR_B, aes(x=TRT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()+
+labs(title="Lean Period B",
+        x ="TRT", y = "Fat")
+grid.arrange(p1A, p1B, ncol = 2)
+```
+
+
+## Lean Period A et B suivant le traitement Food
+
+```{r}
+p2A <- ggplot(BMR_A, aes(x=TREATMENT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+labs(title="Lean Period A",
+        x ="Food TRT", y = "Lean") 
+p2B <- ggplot(BMR_B, aes(x=TREATMENT, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="Lean Period B",
+        x ="Food TRT", y = "Lean") 
+grid.arrange(p2A, p2B, ncol = 2)
+```
+## Fat entre A et B et suivant le traitement Food
+
+```{r}
+p2A <- ggplot(BMR_A, aes(x=TREATMENT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()+
+labs(title="Fat Period A",
+        x ="Food TRT", y = "Fat") 
+p2B <- ggplot(BMR_B, aes(x=TREATMENT, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="Fat Period B",
+        x ="Food TRT", y = "Fat") 
+grid.arrange(p2A, p2B, ncol = 2)
+```
+
+### Lean entre A et B suivant le pesticide
+
+```{r}
+p3A<- ggplot(BMR_A, aes(x=PEST, y =  prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = prebmr.Moyenne_Lean), col = "red", alpha = 0.2)+
+  labs(title="Lean Period A",
+        x ="Pest TRT", y = "Lean") 
+p3B<- ggplot(BMR_B, aes(x=PEST, y = prebmr.Moyenne_Lean)) + geom_boxplot()+
+  theme_bw()+
+  geom_point(aes(x = PEST, y = prebmr.Moyenne_Lean), col = "red", alpha = 0.2)+
+  labs(title="Lean Period B",
+        x ="Pest TRT", y = "Lean") 
+grid.arrange(p3A, p3B, ncol = 2)
+```
+### Fat entre A et B suivant le Pest
+
+```{r}
+p3A<- ggplot(BMR_A, aes(x=PEST, y =  prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="Fat Period A",
+        x ="Pest TRT", y = "Fat") 
+p3B<- ggplot(BMR_B, aes(x=PEST, y = prebmr.Moyenne_Fat)) + geom_boxplot()+
+  theme_bw()+
+  labs(title="Fat Period B",
+        x ="Pest TRT", y = "Fat") 
+grid.arrange(p3A, p3B, ncol = 2)
+```
+
+## regression BMR/ Lean et Fat
+
+```{r}
+plot(BMR$Mean_VO2watt_1 ~ BMR$prebmr.Moyenne_Lean)
+lm1 <- lm(BMR$Mean_VO2watt_1 ~ BMR$prebmr.Moyenne_Lean) 
+summary(lm1)
+
+plot(BMR$Mean_VO2watt_1 ~ BMR$prebmr.Moyenne_Fat)
+lm1 <- lm(BMR$Mean_VO2watt_1 ~ BMR$prebmr.Moyenne_Fat) 
+summary(lm1)
+
+```
+
+
+## Inspection statistique du BMR
+
+```{r}
+# ANOVA
+res.aov <- aov(Mean_VO2watt_1 ~ TRT+SEX, data = BMR_A)
+TukeyHSD(res.aov)
+# Summary of the analysis
+plot(res.aov, 1)
+leveneTest(Mean_VO2watt_1 ~ TRT, data = BMR_A)
+plot(res.aov, 2)
+
+library(AICcmodavg)
+options(na.action = "na.fail")
+mp1 <- lmer(Mean_VO2watt_1~ PEST*TREATMENT + SEX + (1|PAIRS), data = BMR, REML = F)
+summary(mp1)
+mp1 <- lmer(Mean_VO2watt_1~ PEST+TREATMENT + SEX + (1|PAIRS), data = BMR, REML = F)
+summary(mp1)
+
+
+options(na.action = "na.fail")
+mp1 <- lmer(Mean_VO2watt_1~ TRT + SEX + (1|PAIRS), data = BMR_A, REML = F)
+summary(mp1)
+mp1 <- lmer(Mean_VO2watt_1~ TRT + (1|PAIRS), data = BMR_A, REML = F)
+summary(mp1)
+
+
+
+
+mp1 <- lmer(Mean_VO2watt_1~ PEST*TREATMENT + SEX + (1|PAIRS), data = BMR, REML = F)
+summary(mp1)
+
+
+
+ms1 <- dredge(mp1)
+head(ms1)
+
+# output sur les models  delta <2.00
+summary(model.avg(ms1, subset = delta < 2.00))
+
+
+```
+
+## Inspection statistique du Lean
+
+```{r}
+# ANOVA
+res.aov <- aov(prebmr.Moyenne_Lean ~ TRT, data = BMR_A)
+TukeyHSD(res.aov)
+# Summary of the analysis
+plot(res.aov, 1)
+leveneTest(prebmr.Moyenne_Lean ~ TRT, data = BMR_A)
+plot(res.aov, 2)
+
+```
+
+
+## retour à un taux metabo de base
+
+
+```{r}
+p3A<- ggplot(BMR, aes(x=PEST, y = Marqueur)) + geom_boxplot()+
+  theme_bw()+
+   geom_point(aes(x = PEST, y = Marqueur), col = "red", alpha = 0.2)+
+  labs(title="Fat Period A",
+        x ="Pest TRT", y = "Fat") 
+p3A
+
+
+res.aov <- aov(Marqueur ~ PEST+SEX, data = BMR)
+TukeyHSD(res.aov)
+# Summary of the analysis
+plot(res.aov, 1)
+leveneTest(Marqueur ~ TRT, data = BMR_A)
+plot(res.aov, 2)
+
+
+```
