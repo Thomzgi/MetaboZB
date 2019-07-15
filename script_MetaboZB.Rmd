@@ -1,7 +1,6 @@
 ---
-title: "Metabolic_Zebra"
+title: "script_MetaboZB"
 ---
-
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file,
