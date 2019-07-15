@@ -1,5 +1,8 @@
 ---
 title: "Metabolic_Zebra"
+author: "Thomas Z"
+date: "14 juillet 2019"
+output: html_document
 ---
 
 knit: (function(input_file, encoding) {

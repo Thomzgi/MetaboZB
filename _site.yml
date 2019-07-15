@@ -1,12 +1,12 @@
-name: "cars"
+name: "MetaboZB"
 output_dir: "docs"
 navbar:
-  title: "Cars"
+  title: "MetaboZB"
   left:
   - text: "Home"
    href: index.html
-  - text: "Speed and Distance"
-   href: speed-and-distance.html
+  - text: "script_MetaboZB"
+   href: script_MetaboZB.html
 output:
   html_document:
  theme: cosmo
