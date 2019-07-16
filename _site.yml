@@ -1,0 +1,12 @@
+name: "MetaboZB"
+output_dir: "docs"
+navbar:
+  title: "MetaboZB"
+  left:
+  - text: "Home"
+   href: index.html
+  - text: "script_MetaboZB"
+   href: script_MetaboZB.html
+output:
+  html_document:
+ theme: cosmo
